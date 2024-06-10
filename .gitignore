@@ -131,3 +131,6 @@ log/
 experiments/exp_results/
 output/
 models/
+data/
+notes/
+
