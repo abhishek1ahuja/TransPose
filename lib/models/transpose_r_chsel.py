@@ -459,6 +459,8 @@ class TransPoseR(nn.Module):
             pretrained_state_dict = torch.load(pretrained)
             logger.info('=> loading pretrained model {}'.format(pretrained))
             existing_state_dict = {}
+            if 'nw_cfg' in pretrained_state_dict.keys():
+                pretrained_state_dict = pretrained_state_dict['state_dict']
             for name, m in pretrained_state_dict.items():
                 if name in self.state_dict():
                     existing_state_dict[name] = m
