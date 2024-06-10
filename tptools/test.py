@@ -81,15 +81,19 @@ def main():
     torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
     torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
-    model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
-        cfg, is_train=False
-    )
+    if cfg.MODEL.NW_CFG is None:
+        model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(cfg, is_train=False)
+    else:
+        model = eval('models.' + cfg.MODEL.NAME + '.get_pose_net')(cfg, is_train=False, nw_cfg=cfg.MODEL.NW_CFG)
+
 
     if cfg.TEST.MODEL_FILE:
         logger.info('=> loading model from {}'.format(cfg.TEST.MODEL_FILE))
         ckpt_state_dict = torch.load(cfg.TEST.MODEL_FILE)
         # print(ckpt_state_dict['pos_embedding'])  # FOR UNSeen Resolutions
         # ckpt_state_dict.pop('pos_embedding') # FOR UNSeen Resolutions
+        if 'nw_cfg' in ckpt_state_dict.keys():
+            ckpt_state_dict = ckpt_state_dict['state_dict']
         model.load_state_dict(ckpt_state_dict, strict=True)   #  strict=False FOR UNSeen Resolutions
     else:
         model_state_file = os.path.join(
