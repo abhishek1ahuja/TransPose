@@ -4,7 +4,7 @@
 # great thanks for fmassa!
 
 # Run this python file with a config file, such as:
-# python tools/compute_flops.py experiments/coco/transpose_r/TP_R_256x192_d256_h1024_enc5_mh8.yaml
+# python tptools/compute_flops.py experiments/coco/transpose_r/TP_R_256x192_d256_h1024_enc5_mh8.yaml
 
 import torch
 import time
