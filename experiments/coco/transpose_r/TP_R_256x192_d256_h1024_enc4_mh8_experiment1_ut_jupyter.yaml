@@ -1,3 +1,5 @@
+# this will be the config for finetuning training of a pruned model
+
 AUTO_RESUME: true
 CUDNN:
   BENCHMARK: true

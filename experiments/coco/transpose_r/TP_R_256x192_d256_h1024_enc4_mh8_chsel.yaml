@@ -31,8 +31,9 @@ MODEL:
   ATTENTION_ACTIVATION: relu
   POS_EMBEDDING: sine
   # #
-  NAME: 'transpose_r'
+  NAME: 'transpose_r_chsel'
   PRETRAINED: 'models/pytorch/imagenet/resnet50-19c8e357.pth'
+  PRETRAINED_CHSEL: 'output/coco/transpose_r_chsel/TP_R_256x192_d256_h1024_enc4_mh8_chsel/pretrained_chsel_1.pth'
   IMAGE_SIZE:
   - 192
   - 256
