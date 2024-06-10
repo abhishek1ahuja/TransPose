@@ -39,7 +39,7 @@ import numpy as np
 
 """
 Snippet 1
-Following snippet is from tools/train.py or tools/test.py
+Following snippet is from tptools/train.py or tptools/test.py
 """
 
 def parse_args(args___):
@@ -97,14 +97,7 @@ model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
 pretrained_weights_chkpt = cfg.MODEL.PRETRAINED_CHSEL
 # model.load_state_dict(pretrained_weights_chkpt)
 
-pretrained_state_dict = torch.load(pretrained_weights_chkpt)
-logger.info('=> loading pretrained model {}'.format(pretrained_weights_chkpt))
-existing_state_dict = {}
-for name, m in pretrained_state_dict.items():
-    if name in model.state_dict():
-        existing_state_dict[name] = m
-        print(":: {} is loaded from {}".format(name, pretrained_weights_chkpt))
-model.load_state_dict(existing_state_dict, strict=False)
+model.init_weights(cfg.TEST.MODEL_FILE)
 
 """
 end of snippet 1
@@ -378,7 +371,7 @@ for layer_id in range(len(old_modules)):
 #         m1.weight.data = m0.weight.data[:, idx0].clone()
 #         m1.bias.data = m0.bias.data.clone()
 
-torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, 'transpose_r_pruned_iter1.pth'))
+torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, 'transpose_r_modelfile_pruned_iter1.pth'))
 
 """
 end of snippet 2

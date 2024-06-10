@@ -196,6 +196,9 @@ def main():
 
     model.cuda()
 
+    model_state_file_chsel_layers = os.path.join(final_output_dir, "pretrained_chsel_1.pth")
+    torch.save(model.module.state_dict(), model_state_file_chsel_layers)
+
 
     for epoch in range(begin_epoch, cfg.TRAIN.END_EPOCH):
 
