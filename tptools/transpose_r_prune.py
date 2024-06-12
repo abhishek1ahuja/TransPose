@@ -92,7 +92,7 @@ torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
 torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
 model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
-    cfg, is_train=False
+    cfg, is_train=False, nw_cfg=cfg.MODEL.NW_CFG
 )
 pretrained_weights_chkpt = cfg.MODEL.PRETRAINED_CHSEL
 # model.load_state_dict(pretrained_weights_chkpt)
@@ -136,6 +136,7 @@ total = 0 # calculating number of BN layer weights
 
 old_modules = list(model.named_modules())
 bn_layers_sel = []
+bn_layers_mask = {}
 for layer_id in range(len(old_modules)):
     m = old_modules[layer_id]
     # print(layer_id, m[0])
@@ -146,8 +147,13 @@ for layer_id in range(len(old_modules)):
             continue
         if layer_id == 2:
             continue
-        total += m[1].weight.data.shape[0]
+        if isinstance(old_modules[layer_id+1], pruning.channel_selection.ChannelSelection):
+            total += np.sum(old_modules[layer_id+1].indexes)
+        else:
+            total += m[1].weight.data.shape[0]
         bn_layers_sel.append(layer_id)
+    if isinstance(m[1], pruning.channel_selection.ChannelSelection):
+        bn_layers_mask[layer_id-1] = m[1].indexes.cpu().detach().numpy()
 
 bn = torch.zeros(total)
 index = 0
@@ -155,8 +161,13 @@ old_modules = list(model.modules())
 for layer_id in range(len(old_modules)):
     m = old_modules[layer_id]
     if isinstance(m, nn.BatchNorm2d) and layer_id in bn_layers_sel:
-        size = m.weight.data.shape[0]
-        bn[index:(index+size)] = m.weight.data.abs().clone()
+        if layer_id in bn_layers_mask.keys():
+            size = (int) (np.sum(bn_layers_mask[layer_id]))
+            ind = np.squeeze(np.argwhere(bn_layers_mask[layer_id]))
+            bn[index:(index+size)] = m.weight.data[ind].abs().clone()
+        else:
+            size = m.weight.data.shape[0]
+            bn[index:(index+size)] = m.weight.data.abs().clone()
         index += size
 
 y, i = torch.sort(bn)
@@ -170,20 +181,34 @@ nw_cfg = []
 nw_cfg_mask = []
 nw_cfg_dict = {}
 
-for k, m in enumerate(model.modules()):
-    if isinstance(m, nn.BatchNorm2d) and k in bn_layers_sel:
+# for k, m in enumerate(model.modules()):
+for layer_id in range(len(old_modules)):
+    m = old_modules[layer_id]
+    if isinstance(m, nn.BatchNorm2d) and layer_id in bn_layers_sel:
+        if layer_id in bn_layers_mask.keys():
+            weight_copy = m.weight.data.abs().clone()
+            mask2 = weight_copy.gt(thre).float().cuda()
 
-        weight_copy = m.weight.data.abs().clone()
-        mask = weight_copy.gt(thre).float().cuda()
-        pruned = pruned + mask.shape[0] - torch.sum(mask)
-        m.weight.data.mul_(mask)
-        m.bias.data.mul_(mask)
+            ind = np.squeeze(np.argwhere(bn_layers_mask[layer_id]))
+            weight_sel = m.weight.data[ind].abs().clone()
+            mask = weight_sel.gt(thre).float().cuda()
+
+            pruned = pruned + mask.shape[0] - torch.sum(mask)
+
+            m.weight.data.mul_(mask2)
+            m.bias.data.mul_(mask2)
+        else:
+            weight_copy = m.weight.data.abs().clone()
+            mask = weight_copy.gt(thre).float().cuda()
+            pruned = pruned + mask.shape[0] - torch.sum(mask)
+            m.weight.data.mul_(mask)
+            m.bias.data.mul_(mask)
         nw_cfg.append(int(torch.sum(mask)))
-        nw_cfg_dict[k] = nw_cfg[-1]
+        nw_cfg_dict[layer_id] = nw_cfg[-1]
         nw_cfg_mask.append(mask.clone())
 
         print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
-            format(k, mask.shape[0], int(torch.sum(mask))))
+            format(layer_id, mask.shape[0], int(torch.sum(mask))))
     # elif isinstance(m, nn.MaxPool2d):
     #     nw_cfg.append('M')
 
@@ -201,7 +226,7 @@ newmodel = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
     cfg, is_train=False, nw_cfg=nw_cfg
 )
 
-nw_cfg_output_file = os.path.join(final_output_dir, "transpose_r_pruned_iter1_nw_cfg.txt")
+nw_cfg_output_file = os.path.join(final_output_dir, "transpose_r_pruned_iter2_nw_cfg.txt")
 with open(nw_cfg_output_file, "w+") as nw_cfg_output_fd:
     nw_cfg_output_fd.write(str(nw_cfg))
 
