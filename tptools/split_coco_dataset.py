@@ -19,10 +19,9 @@ if not os.path.exists(path_to_coco_subset_dest):
     os.mkdir(path_to_coco_subset_dest)
 
 total_num_images = len(train_img_list)
-subset_num_images = (int) (subset_perc/100) * total_num_images
+subset_num_images = (int) ((subset_perc/100) * total_num_images)
 
-# TODO make this a random selection - than selecting first n images
-# subset_3000_img_filenames = train_img_list[:3000]
+np.random.seed(10)
 subset_img_filenames = np.random.choice(train_img_list, subset_num_images, replace=False)
 for img in subset_img_filenames:
     src_img_path = os.path.join(path_to_coco_full_dataset_src, img)
