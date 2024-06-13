@@ -78,7 +78,7 @@ def parse_args(args___):
     args = parser.parse_args(args___)
     return args
 
-config_file_path = 'experiments/coco/transpose_r/TP_R_256x192_d256_h1024_enc4_mh8_chsel.yaml'
+config_file_path = 'experiments/coco/transpose_r/TP_R_256x192_d256_h1024_enc4_mh8_chsel-Copy3.yaml'
 args = parse_args(['--cfg', config_file_path, 'TEST.USE_GT_BBOX', 'True'])
 update_config(cfg, args)
 
@@ -94,38 +94,13 @@ torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
     cfg, is_train=False, nw_cfg=cfg.MODEL.NW_CFG
 )
-pretrained_weights_chkpt = cfg.MODEL.PRETRAINED_CHSEL
-# model.load_state_dict(pretrained_weights_chkpt)
-
 model.init_weights(cfg.TEST.MODEL_FILE)
-
 """
 end of snippet 1
 """
-
-
 args.cuda = torch.cuda.is_available()
-
-# if not os.path.exists(args.save):
-#     os.makedirs(args.save)
-
-# model = resnet(depth=args.depth, dataset=args.dataset) #DONE use transpose_h model from config
-
 if args.cuda:
     model.cuda()
-
-# if args.model: # DONE load saved model
-#     if os.path.isfile(args.model):
-#         print("=> loading checkpoint '{}'".format(args.model))
-#         checkpoint = torch.load(args.model)
-#         args.start_epoch = checkpoint['epoch']
-#         best_prec1 = checkpoint['best_prec1']
-#         model.load_state_dict(checkpoint['state_dict'])
-#         print("=> loaded checkpoint '{}' (epoch {}) Prec1: {:f}"
-#               .format(args.model, checkpoint['epoch'], best_prec1))
-#     else:
-#         print("=> no checkpoint found at '{}'".format(args.resume))
-
 
 """
 snippet 2
@@ -226,7 +201,7 @@ newmodel = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
     cfg, is_train=False, nw_cfg=nw_cfg
 )
 
-nw_cfg_output_file = os.path.join(final_output_dir, "transpose_r_pruned_iter2_nw_cfg.txt")
+nw_cfg_output_file = os.path.join(final_output_dir, "transpose_r_pruned_iter3_nw_cfg.txt")
 with open(nw_cfg_output_file, "w+") as nw_cfg_output_fd:
     nw_cfg_output_fd.write(str(nw_cfg))
 
@@ -234,11 +209,6 @@ if args.cuda:
     newmodel.cuda()
 
 num_parameters = sum([param.nelement() for param in newmodel.parameters()])
-# savepath = os.path.join(args.save, "prune.txt")
-# with open(savepath, "w") as fp:
-#     fp.write("Configuration: \n"+str(nw_cfg)+"\n")
-#     fp.write("Number of parameters: \n"+str(num_parameters)+"\n")
-#     # fp.write("Test accuracy: \n"+str(acc))
 
 old_modules = list(model.modules())
 new_modules = list(newmodel.modules())
@@ -247,19 +217,15 @@ start_mask = torch.ones(3)
 end_mask = nw_cfg_mask[layer_id_in_nw_cfg]
 conv_count = 0
 
-
 for layer_id in range(len(old_modules)):
     m0 = old_modules[layer_id]
     m1 = new_modules[layer_id]
     if isinstance(m0, models.transpose_r_chsel.Bottleneck):
         print("\n\n#\t#\t#\tbottleneck")
-    # if isinstance(m0.)
     if isinstance(m0, nn.Conv2d):
         expected_shape = m1.weight.data.shape
         print(f"{layer_id} conv shape old {m0.weight.data.shape} new {m1.weight.data.shape}")
         if layer_id+1 in bn_layers_sel:
-            #TODO handle the following cases
-            # when input channels do not need to be pruned (for first conv and first BN of the Bottleneck )
 
             if isinstance(old_modules[layer_id+2], pruning.channel_selection.ChannelSelection):
                 m1.weight.data = m0.weight.data.clone()
@@ -325,78 +291,9 @@ for layer_id in range(len(old_modules)):
             m1.running_mean = m0.running_mean.clone()
             m1.running_var = m0.running_var.clone()
 
-# for layer_id in range(len(old_modules)):
-#     m0 = old_modules[layer_id]
-#     m1 = new_modules[layer_id]
-#     if isinstance(m0, nn.BatchNorm2d) and layer_id in bn_layers_sel:
-#         idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-#         if idx1.size == 1:
-#             idx1 = np.resize(idx1,(1,))
-#
-#         if isinstance(old_modules[layer_id + 1], pruning.channel_selection.ChannelSelection):
-#             # If the next layer is the channel selection layer, then the current batchnorm 2d layer won't be pruned.
-#             m1.weight.data = m0.weight.data.clone()
-#             m1.bias.data = m0.bias.data.clone()
-#             m1.running_mean = m0.running_mean.clone()
-#             m1.running_var = m0.running_var.clone()
-#
-#             # We need to set the channel selection layer.
-#             m2 = new_modules[layer_id + 1]
-#             m2.indexes.data.zero_()
-#             m2.indexes.data[idx1.tolist()] = 1.0
-#
-#             layer_id_in_nw_cfg += 1
-#             start_mask = end_mask.clone()
-#             if layer_id_in_nw_cfg < len(nw_cfg_mask):
-#                 end_mask = nw_cfg_mask[layer_id_in_nw_cfg]
-#         else:
-#             m1.weight.data = m0.weight.data[idx1.tolist()].clone()
-#             m1.bias.data = m0.bias.data[idx1.tolist()].clone()
-#             m1.running_mean = m0.running_mean[idx1.tolist()].clone()
-#             m1.running_var = m0.running_var[idx1.tolist()].clone()
-#             layer_id_in_nw_cfg += 1
-#             start_mask = end_mask.clone()
-#             if layer_id_in_nw_cfg < len(nw_cfg_mask):  # do not change in Final FC
-#                 end_mask = nw_cfg_mask[layer_id_in_nw_cfg]
-#     elif isinstance(m0, nn.Conv2d) and (layer_id+1) in bn_layers_sel:
-#         if isinstance(new_modules[layer_id+2], pruning.channel_selection.ChannelSelection):
-#             continue
-#         if conv_count == 0:
-#             m1.weight.data = m0.weight.data.clone()
-#             conv_count += 1
-#             continue
-#         if isinstance(old_modules[layer_id-1], pruning.channel_selection.ChannelSelection) or isinstance(old_modules[layer_id - 1], nn.BatchNorm2d):
-#             # This covers the convolutions in the residual block.
-#             # The convolutions are either after the channel selection layer or after the batch normalization layer.
-#             conv_count += 1
-#             idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-#             idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
-#             print('In shape: {:d}, Out shape {:d}.'.format(idx0.size, idx1.size))
-#             if idx0.size == 1:
-#                 idx0 = np.resize(idx0, (1,))
-#             if idx1.size == 1:
-#                 idx1 = np.resize(idx1, (1,))
-#             w1 = m0.weight.data[:, idx0.tolist(), :, :].clone()
-#
-#             # If the current convolution is not the last convolution in the residual block, then we can change the
-#             # number of output channels. Currently we use `conv_count` to detect whether it is such convolution.
-#             # if conv_count % 3 != 1:
-#             w1 = w1[idx1.tolist(), :, :, :].clone()
-#             m1.weight.data = w1.clone()
-#             continue
-#
-#         # We need to consider the case where there are downsampling convolutions.
-#         # For these convolutions, we just copy the weights.
-#         m1.weight.data = m0.weight.data.clone()
-#     elif isinstance(m0, nn.Linear):
-#         idx0 = np.squeeze(np.argwhere(np.asarray(start_mask.cpu().numpy())))
-#         if idx0.size == 1:
-#             idx0 = np.resize(idx0, (1,))
-#
-#         m1.weight.data = m0.weight.data[:, idx0].clone()
-#         m1.bias.data = m0.bias.data.clone()
-
-torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, 'transpose_r_modelfile_pruned_iter1.pth'))
+# TODO you are saving nw_cfg in the model checkpoint - so you shall also use it from here
+# rather than setting it from the cfg file
+torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, 'transpose_r_modelfile_pruned_iter3.pth'))
 
 """
 end of snippet 2
