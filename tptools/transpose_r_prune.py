@@ -14,8 +14,6 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 
-
-
 import _init_paths
 import pruning.channel_selection
 from config import cfg
@@ -27,15 +25,12 @@ from utils.utils import create_logger
 import dataset
 import models
 
-import torch.nn.utils.prune as prune
-
 import os
 import argparse
 
 import torch
 import torch.nn as nn
 import numpy as np
-# from lib.pruning.channel_selection import ChannelSelection
 
 """
 Snippet 1
@@ -78,11 +73,11 @@ def parse_args(args___):
     args = parser.parse_args(args___)
     return args
 
-config_file_path = 'experiments/coco/transpose_r/TP_R_256x192_d256_h1024_enc4_mh8_chsel-Copy3.yaml'
+config_file_path = 'experiments/coco/transpose_r/exp2/exp2_step1_prune.yaml'
 args = parse_args(['--cfg', config_file_path, 'TEST.USE_GT_BBOX', 'True'])
 update_config(cfg, args)
 
-logger, final_output_dir, tb_log_dir = create_logger(cfg, args.cfg, 'valid')
+logger, final_output_dir, tb_log_dir = create_logger(cfg, args.cfg, 'prune')
 
 logger.info(pprint.pformat(args))
 logger.info(cfg)
@@ -91,8 +86,14 @@ cudnn.benchmark = cfg.CUDNN.BENCHMARK
 torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
 torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
+model_checkpt = torch.load(cfg.TEST.MODEL_FILE)
+if 'nw_cfg' in model_checkpt.keys():
+    nw_cfg_orig = model_checkpt['nw_cfg']
+else:
+    nw_cfg_orig = None
+
 model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
-    cfg, is_train=False, nw_cfg=cfg.MODEL.NW_CFG
+    cfg, is_train=False, nw_cfg=nw_cfg_orig
 )
 model.init_weights(cfg.TEST.MODEL_FILE)
 """
@@ -114,7 +115,6 @@ bn_layers_sel = []
 bn_layers_mask = {}
 for layer_id in range(len(old_modules)):
     m = old_modules[layer_id]
-    # print(layer_id, m[0])
     if isinstance(m[1], nn.BatchNorm2d):
         if 'downsample' in m[0].lower() or 'bn3' in m[0].lower():
             continue
@@ -146,7 +146,7 @@ for layer_id in range(len(old_modules)):
         index += size
 
 y, i = torch.sort(bn)
-percent_pruning = 0.4
+percent_pruning = 0.1
 # thre_index = int(total * args.percent)
 thre_index = int(total * percent_pruning)
 thre = y[thre_index]
@@ -200,10 +200,6 @@ print(nw_cfg)
 newmodel = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(
     cfg, is_train=False, nw_cfg=nw_cfg
 )
-
-nw_cfg_output_file = os.path.join(final_output_dir, "transpose_r_pruned_iter3_nw_cfg.txt")
-with open(nw_cfg_output_file, "w+") as nw_cfg_output_fd:
-    nw_cfg_output_fd.write(str(nw_cfg))
 
 if args.cuda:
     newmodel.cuda()
@@ -293,7 +289,7 @@ for layer_id in range(len(old_modules)):
 
 # TODO you are saving nw_cfg in the model checkpoint - so you shall also use it from here
 # rather than setting it from the cfg file
-torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, 'transpose_r_modelfile_pruned_iter3.pth'))
+torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, 'exp2_step1_prune.pth'))
 
 """
 end of snippet 2

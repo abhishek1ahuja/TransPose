@@ -96,10 +96,13 @@ def main():
     np.random.seed(seed)
     random.seed(seed)
 
-    if cfg.MODEL.NW_CFG is None:
-        model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(cfg, is_train=True)
+    model_checkpt = torch.load(cfg.TEST.MODEL_FILE)
+    if 'nw_cfg' in model_checkpt.keys():
+        nw_cfg = model_checkpt['nw_cfg']
     else:
-        model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(cfg, is_train=True, nw_cfg=cfg.MODEL.NW_CFG)
+        nw_cfg = None
+
+    model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(cfg, is_train=True, nw_cfg=nw_cfg)
 
     # copy model file
     this_dir = os.path.dirname(__file__)
