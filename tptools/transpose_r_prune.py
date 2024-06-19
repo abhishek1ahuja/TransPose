@@ -86,7 +86,7 @@ cudnn.benchmark = cfg.CUDNN.BENCHMARK
 torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
 torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
-model_checkpt = torch.load(cfg.TEST.MODEL_FILE)
+model_checkpt = torch.load(cfg.TEST.MODEL_FILE, map_location='cuda:0')
 if 'nw_cfg' in model_checkpt.keys():
     nw_cfg_orig = model_checkpt['nw_cfg']
 else:

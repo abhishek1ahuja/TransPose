@@ -43,8 +43,9 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
         # compute output
         outputs = model(input)
 
-        target = target.cuda(non_blocking=True)
-        target_weight = target_weight.cuda(non_blocking=True)
+        device_id_0 = 'cuda:' + str(config.GPUS[0])
+        target = target.to(device_id_0, non_blocking=True)
+        target_weight = target_weight.to(device_id_0, non_blocking=True)
 
         if isinstance(outputs, list):
             loss = criterion(outputs[0], target, target_weight)
@@ -114,6 +115,7 @@ def validate(config, val_loader, val_dataset, model, criterion, output_dir,
     filenames = []
     imgnums = []
     idx = 0
+    device_id_0 = 'cuda:' + str(config.GPUS[0])
     with torch.no_grad():
         end = time.time()
         for i, (input, target, target_weight, meta) in enumerate(val_loader):
@@ -138,12 +140,11 @@ def validate(config, val_loader, val_dataset, model, criterion, output_dir,
 
                 output_flipped = flip_back(output_flipped.cpu().numpy(),
                                            val_dataset.flip_pairs)
-                output_flipped = torch.from_numpy(output_flipped.copy()).cuda()
-
+                output_flipped = torch.from_numpy(output_flipped.copy()).to(device_id_0)
                 output = (output + output_flipped) * 0.5
 
-            target = target.cuda(non_blocking=True)
-            target_weight = target_weight.cuda(non_blocking=True)
+            target = target.to(device_id_0, non_blocking=True)
+            target_weight = target_weight.to(device_id_0, non_blocking=True)
 
             loss = criterion(output, target, target_weight)
 
