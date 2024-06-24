@@ -96,10 +96,13 @@ def main():
     np.random.seed(seed)
     random.seed(seed)
 
-    if cfg.MODEL.NW_CFG is None:
-        model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(cfg, is_train=True)
+    model_checkpt = torch.load(cfg.TEST.MODEL_FILE)
+    if 'nw_cfg' in model_checkpt.keys():
+        nw_cfg = model_checkpt['nw_cfg']
     else:
-        model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(cfg, is_train=True, nw_cfg=cfg.MODEL.NW_CFG)
+        nw_cfg = None
+
+    model = eval('models.'+cfg.MODEL.NAME+'.get_pose_net')(cfg, is_train=True, nw_cfg=nw_cfg)
 
     # copy model file
     this_dir = os.path.dirname(__file__)
@@ -118,13 +121,14 @@ def main():
         (1, 3, cfg.MODEL.IMAGE_SIZE[1], cfg.MODEL.IMAGE_SIZE[0])
     )
 
-    model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
+    device_id_0 = 'cuda:' + str(cfg.GPUS[0])
+    model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).to(device_id_0)
     
 
     # define loss function (criterion) and optimizer
     criterion = JointsMSELoss(
         use_target_weight=cfg.LOSS.USE_TARGET_WEIGHT
-    ).cuda()
+    ).to(device_id_0)
 
     # Data loading code
     normalize = transforms.Normalize(
@@ -195,7 +199,7 @@ def main():
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, cfg.TRAIN.END_EPOCH, eta_min=cfg.TRAIN.LR_END, last_epoch=last_epoch)
 
-    model.cuda()
+    # model.cuda()
 
     # TODO this was the code to add channel selection layers to the pretrained weights
     # move it to an appropriate place
@@ -229,6 +233,7 @@ def main():
             'model': cfg.MODEL.NAME,
             'state_dict': model.state_dict(),
             'best_state_dict': model.module.state_dict(),
+            'nw_cfg': nw_cfg,
             'perf': perf_indicator,
             'optimizer': optimizer.state_dict(),
             'train_global_steps': writer_dict['train_global_steps'],
@@ -241,7 +246,7 @@ def main():
     logger.info('=> saving final model state to {}'.format(
         final_model_state_file)
     )
-    torch.save(model.module.state_dict(), final_model_state_file)
+    torch.save({'nw_cfg': nw_cfg, 'state_dict':model.module.state_dict()}, final_model_state_file)
     writer_dict['writer'].close()
 
 

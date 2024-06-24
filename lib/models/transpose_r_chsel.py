@@ -456,11 +456,16 @@ class TransPoseR(nn.Module):
                     nn.init.normal_(m.weight, std=0.001)
                     nn.init.constant_(m.bias, 0)
 
-            pretrained_state_dict = torch.load(pretrained)
+            pretrained_state_dict = torch.load(pretrained, map_location='cuda:0')
             logger.info('=> loading pretrained model {}'.format(pretrained))
             existing_state_dict = {}
             if 'nw_cfg' in pretrained_state_dict.keys():
-                pretrained_state_dict = pretrained_state_dict['state_dict']
+                if 'best_state_dict' in pretrained_state_dict.keys():
+                    pretrained_state_dict = pretrained_state_dict['best_state_dict']
+                else:
+                    pretrained_state_dict = pretrained_state_dict['state_dict']
+            elif 'best_state_dict' in pretrained_state_dict.keys():
+                pretrained_state_dict = pretrained_state_dict['best_state_dict']
             for name, m in pretrained_state_dict.items():
                 if name in self.state_dict():
                     existing_state_dict[name] = m
