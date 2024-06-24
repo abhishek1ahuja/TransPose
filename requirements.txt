@@ -1,3 +1,4 @@
+numpy==1.26.4
 pycocotools
 EasyDict==1.7
 opencv-python
