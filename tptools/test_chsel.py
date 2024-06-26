@@ -20,8 +20,10 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
+from tensorboardX import SummaryWriter
 
 import _init_paths
+import utils.utils
 from config import cfg
 from config import update_config
 from core.loss import JointsMSELoss
@@ -30,6 +32,7 @@ from utils.utils import create_logger
 
 import dataset
 import models
+import numpy as np
 
 
 def parse_args():
@@ -81,30 +84,21 @@ def main():
     torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
     torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
-    model_checkpt = torch.load(cfg.TEST.MODEL_FILE)
+    device_id_0 = 'cuda:' + str(cfg.GPUS[0])
+    model_checkpt = torch.load(cfg.TEST.MODEL_FILE, map_location=device_id_0)
     if 'nw_cfg' in model_checkpt.keys():
         nw_cfg = model_checkpt['nw_cfg']
     else:
         nw_cfg = None
 
     model = eval('models.' + cfg.MODEL.NAME + '.get_pose_net')(cfg, is_train=False, nw_cfg=nw_cfg)
+    model.init_weights(cfg.TEST.MODEL_FILE)
 
-
-    if cfg.TEST.MODEL_FILE:
-        logger.info('=> loading model from {}'.format(cfg.TEST.MODEL_FILE))
-        ckpt_state_dict = torch.load(cfg.TEST.MODEL_FILE)
-        # print(ckpt_state_dict['pos_embedding'])  # FOR UNSeen Resolutions
-        # ckpt_state_dict.pop('pos_embedding') # FOR UNSeen Resolutions
-        if 'nw_cfg' in ckpt_state_dict.keys():
-            ckpt_state_dict = ckpt_state_dict['state_dict']
-        model.load_state_dict(ckpt_state_dict, strict=True)   #  strict=False FOR UNSeen Resolutions
-    else:
-        model_state_file = os.path.join(
-            final_output_dir, 'final_state.pth'
-        )
-        logger.info('=> loading model from {}'.format(model_state_file))
-        model.load_state_dict(torch.load(model_state_file))
-    w, h = cfg.MODEL.IMAGE_SIZE
+    writer_dict = {
+        'writer': SummaryWriter(log_dir=tb_log_dir),
+        'train_global_steps': 0,
+        'valid_global_steps': 0,
+    }
 
     ######### FOR UNSeen Resolutions  #########
     # input_feature_length = int(w * h / 8 * 8)  # for TransPose-R
@@ -118,7 +112,7 @@ def main():
     #     model.pos_embedding = torch.nn.Parameter(pos_embedding_new.flatten(2).permute(2, 0, 1))
     #     print(model.pos_embedding.shape)
     ######### FOR UNSeen Resolutions  #########
-    device_id_0 = 'cuda:' + str(cfg.GPUS[0])
+
     model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).to(device_id_0)
 
     # define loss function (criterion) and optimizer
@@ -147,7 +141,20 @@ def main():
 
     # evaluate on validation set
     validate(cfg, valid_loader, valid_dataset, model, criterion,
-             final_output_dir, tb_log_dir)
+             final_output_dir, tb_log_dir, writer_dict)
+
+    sample_imgs=[]
+    for idx in range(16):
+        img, _, _, _ = valid_dataset[idx]
+        sample_imgs.append(img.numpy())
+    sample_imgs = torch.tensor(np.asarray(sample_imgs))
+
+    model_summary = utils.utils.get_model_summary(model, sample_imgs, verbose=True)
+    model_summary_file = os.path.join(final_output_dir, "model_summary.txt")
+    with open(model_summary_file, "w+") as fd:
+        fd.write(model_summary)
+    writer_dict['writer'].close()
+
 
 
 if __name__ == '__main__':
