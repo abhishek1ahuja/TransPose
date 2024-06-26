@@ -37,7 +37,7 @@ Snippet 1
 Following snippet is from tptools/train.py or tptools/test.py
 """
 
-def parse_args(args___):
+def parse_args():
     parser = argparse.ArgumentParser(description='Pruning TransPoseR network with channel_selection layers')
     # general
     parser.add_argument('--cfg',
@@ -68,13 +68,19 @@ def parse_args(args___):
                         default='')
     parser.add_argument('--percent',
                         help='percentage sparsity in float between 0 and 1',
-                        type=float)
+                        type=float,
+                        default=0.1)
+    parser.add_argument('--output_file',
+                        help='name of output file',
+                        type=str,
+                        default='pruned_model.pth')
 
-    args = parser.parse_args(args___)
+    args = parser.parse_args()
     return args
 
-config_file_path = 'experiments/coco/transpose_r/exp2/exp2_step1_prune.yaml'
-args = parse_args(['--cfg', config_file_path, 'TEST.USE_GT_BBOX', 'True'])
+# config_file_path = 'experiments/coco/transpose_r/exp2/exp2_step6_prune.yaml'
+# args = parse_args(['--cfg', config_file_path, 'TEST.USE_GT_BBOX', 'True'])
+args = parse_args()
 update_config(cfg, args)
 
 logger, final_output_dir, tb_log_dir = create_logger(cfg, args.cfg, 'prune')
@@ -146,7 +152,7 @@ for layer_id in range(len(old_modules)):
         index += size
 
 y, i = torch.sort(bn)
-percent_pruning = 0.1
+percent_pruning = args.percent
 # thre_index = int(total * args.percent)
 thre_index = int(total * percent_pruning)
 thre = y[thre_index]
@@ -289,7 +295,7 @@ for layer_id in range(len(old_modules)):
 
 # TODO you are saving nw_cfg in the model checkpoint - so you shall also use it from here
 # rather than setting it from the cfg file
-torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, 'exp2_step1_prune.pth'))
+torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, args.output_file))
 
 """
 end of snippet 2
