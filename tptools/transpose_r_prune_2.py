@@ -116,6 +116,8 @@ following code is from the network slimming repository - from resprune.py
 
 total = 0 # calculating number of BN layer weights
 
+prune_ignore_layers = cfg.MODEL.EXTRA.PRUNE_IGNORE_LAYERS
+
 old_modules = list(model.named_modules())
 bn_layers_sel = []
 bn_layers_mask = {}
@@ -128,23 +130,24 @@ for layer_id in range(len(old_modules)):
             continue
         if layer_id == 2:
             continue
-        if isinstance(old_modules[layer_id+1][1], pruning.channel_selection.ChannelSelection):
-            total += int(torch.sum(old_modules[layer_id+1][1].indexes).cpu().detach().numpy())
-            print(torch.sum(old_modules[layer_id+1][1].indexes).cpu().detach().numpy(), end=", ")
+        if layer_id in prune_ignore_layers:
+            pass
+        elif isinstance(old_modules[layer_id + 1][1], pruning.channel_selection.ChannelSelection):
+            total += int(torch.sum(old_modules[layer_id + 1][1].indexes).cpu().detach().numpy())
+            print(torch.sum(old_modules[layer_id + 1][1].indexes).cpu().detach().numpy(), end=", ")
         else:
             total += m[1].weight.data.shape[0]
             print(m[1].weight.data.shape[0], end=", ")
         bn_layers_sel.append(layer_id)
     if isinstance(m[1], pruning.channel_selection.ChannelSelection):
-        bn_layers_mask[layer_id-1] = m[1].indexes.cpu().detach().numpy()
+        bn_layers_mask[layer_id - 1] = m[1].indexes.cpu().detach().numpy()
 print()
-
 bn = torch.zeros(total)
 index = 0
 old_modules = list(model.modules())
 for layer_id in range(len(old_modules)):
     m = old_modules[layer_id]
-    if isinstance(m, nn.BatchNorm2d) and layer_id in bn_layers_sel:
+    if isinstance(m, nn.BatchNorm2d) and layer_id in bn_layers_sel and layer_id not in prune_ignore_layers:
         if layer_id in bn_layers_mask.keys():
             size = (int) (np.sum(bn_layers_mask[layer_id]))
             ind = np.squeeze(np.argwhere(bn_layers_mask[layer_id]))
@@ -169,7 +172,19 @@ nw_cfg_dict = {}
 for layer_id in range(len(old_modules)):
     m = old_modules[layer_id]
     if isinstance(m, nn.BatchNorm2d) and layer_id in bn_layers_sel:
-        if layer_id in bn_layers_mask.keys():
+        if layer_id in prune_ignore_layers:
+            if layer_id in bn_layers_mask.keys():
+                ind = np.squeeze(np.argwhere(bn_layers_mask[layer_id]))
+                weight_sel = m.weight.data[ind].abs().clone()
+                if ind.size == 1:
+                    mask = torch.ones(1)
+                else:
+                    mask = torch.ones(weight_sel.shape[0])
+            else:
+                mask = torch.ones(m.weight.data.shape)
+        # if layer is followed by channel selection layer
+        #
+        elif layer_id in bn_layers_mask.keys():
             weight_copy = m.weight.data.abs().clone()
             mask2 = weight_copy.gt(thre).float().cuda()
 
@@ -181,6 +196,7 @@ for layer_id in range(len(old_modules)):
 
             m.weight.data.mul_(mask2)
             m.bias.data.mul_(mask2)
+
         else:
             weight_copy = m.weight.data.abs().clone()
             mask = weight_copy.gt(thre).float().cuda()
@@ -193,13 +209,11 @@ for layer_id in range(len(old_modules)):
 
         print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
             format(layer_id, mask.shape[0], int(torch.sum(mask))))
-    # elif isinstance(m, nn.MaxPool2d):
-    #     nw_cfg.append('M')
+
+
 
 pruned_ratio = pruned/total
-
-# this is the accuracy of the trained model before pruning
-# acc = test(model) #TODO attach testing module
+print("pruned ratio: ", pruned_ratio)
 
 print("nw_Cfg:")
 print(nw_cfg)
@@ -296,7 +310,7 @@ for layer_id in range(len(old_modules)):
             m1.running_mean = m0.running_mean.clone()
             m1.running_var = m0.running_var.clone()
 
-# TODO you are saving nw_cfg in the model checkpoint - so you shall also use it from here
+# DONE you are saving nw_cfg in the model checkpoint - so you shall also use it from here
 # rather than setting it from the cfg file
 torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, args.output_file))
 
