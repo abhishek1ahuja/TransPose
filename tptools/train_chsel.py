@@ -70,6 +70,10 @@ def parse_args():
                         help='prev Model directory',
                         type=str,
                         default='')
+    parser.add_argument('--s',
+                        help='scaling factor for BN weights',
+                        type=float,
+                        default=None)
 
     args = parser.parse_args()
 
@@ -211,7 +215,7 @@ def main():
         logger.info("=> current learning rate is {:.6f}".format(lr_scheduler.get_last_lr()[0]))
         # train for one epoch
         train(cfg, train_loader, model, criterion, optimizer, epoch,
-              final_output_dir, tb_log_dir, writer_dict)
+              final_output_dir, tb_log_dir, writer_dict, args.s)
 
         # evaluate on validation set
         perf_indicator = validate(

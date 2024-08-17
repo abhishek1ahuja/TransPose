@@ -15,6 +15,7 @@ import os
 
 import numpy as np
 import torch
+from torch import nn
 
 from core.evaluate import accuracy
 from core.inference import get_final_preds
@@ -24,9 +25,14 @@ from utils.vis import save_debug_images
 
 logger = logging.getLogger(__name__)
 
+def updateBN(model, s):
+    def updateBN():
+        for m in model.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.weight.grad.data.add_(s * torch.sign(m.weight.data))
 
 def train(config, train_loader, model, criterion, optimizer, epoch,
-          output_dir, tb_log_dir, writer_dict):
+          output_dir, tb_log_dir, writer_dict, s=None):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -60,6 +66,8 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
         # compute gradient and do update step
         optimizer.zero_grad()
         loss.backward()
+        if s is not None:
+            updateBN(model, s)
         optimizer.step()
 
         # measure accuracy and record loss

@@ -97,7 +97,8 @@ update_config(cfg, args)
 
 logger, final_output_dir, tb_log_dir = create_logger(cfg, args.cfg, 'prune')
 
-logger.info(pprint.pformat(args))
+
+(pprint.pformat(args))
 logger.info(cfg)
 
 cudnn.benchmark = cfg.CUDNN.BENCHMARK
@@ -133,6 +134,7 @@ prune_ignore_layers = cfg.MODEL.EXTRA.PRUNE_IGNORE_LAYERS
 old_modules = list(model.named_modules())
 bn_layers_sel = []
 bn_layers_mask = {}
+wt_shapes = []
 for layer_id in range(len(old_modules)):
     m = old_modules[layer_id]
     if isinstance(m[1], nn.BatchNorm2d):
@@ -146,11 +148,11 @@ for layer_id in range(len(old_modules)):
             pass
         else:
             total += m[1].weight.data.shape[0]
-            print(m[1].weight.data.shape[0], end=", ")
+            wt_shapes.append(m[1].weight.data.shape[0])
         bn_layers_sel.append(layer_id)
     if isinstance(m[1], pruning.channel_selection.ChannelSelection):
         bn_layers_mask[layer_id - 1] = m[1].indexes.cpu().detach().numpy()
-print()
+logger.info(f"{wt_shapes}")
 bn = torch.zeros(total)
 index = 0
 old_modules = list(model.modules())
@@ -188,14 +190,14 @@ for layer_id in range(len(old_modules)):
         nw_cfg_dict[layer_id] = nw_cfg[-1]
         nw_cfg_mask.append(mask.clone())
 
-        print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
+        logger.info('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
             format(layer_id, mask.shape[0], int(torch.sum(mask))))
 
 pruned_ratio = pruned/total
-print("pruned ratio: ", pruned_ratio)
+logger.info(f"pruned ratio: {pruned_ratio}")
 
-print("nw_Cfg:")
-print(nw_cfg)
+logger.info("nw_Cfg:")
+logger.info(nw_cfg)
 
 # newmodel is going to be the pruned model
 # newmodel = resnet(depth=args.depth, dataset=args.dataset, nw_cfg=nw_cfg)
@@ -220,11 +222,11 @@ for layer_id in range(len(old_modules)):
     m0 = old_modules[layer_id]
     m1 = new_modules[layer_id]
     if isinstance(m0, models.transpose_r_mod.Bottleneck):
-        print("\n\n#\t#\t#\tbottleneck")
+        logger.info("\n\n#\t#\t#\tbottleneck")
         start_full_mask = True
     elif isinstance(m0, nn.Conv2d):
         expected_shape = m1.weight.data.shape
-        print(f"{layer_id} conv shape old {m0.weight.data.shape} new {m1.weight.data.shape}")
+        logger.info(f"{layer_id} conv shape old {m0.weight.data.shape} new {m1.weight.data.shape}")
         if layer_id+1 in bn_layers_sel:
 
 
@@ -248,12 +250,12 @@ for layer_id in range(len(old_modules)):
             m1.weight.data = w1.clone()
         else:
             m1.weight.data = m0.weight.data.clone()
-        print(f"weight shape {m1.weight.data.shape}")
+        logger.info(f"weight shape {m1.weight.data.shape}")
         if m1.weight.data.shape != expected_shape:
-            print(f"^^^{layer_id} MISMATCHED SHAPE OF WEIGHTS exp {expected_shape} real {m1.weight.data.shape}")
+            logger.warn(f"^^^{layer_id} MISMATCHED SHAPE OF WEIGHTS exp {expected_shape} real {m1.weight.data.shape}")
 
     elif isinstance(m0, nn.BatchNorm2d):
-        print(f"{layer_id} BN shape old {m0.weight.shape} new {m1.weight.shape}")
+        logger.info(f"{layer_id} BN shape old {m0.weight.shape} new {m1.weight.shape}")
         expected_shape = m1.weight.data.shape
         if layer_id in bn_layers_sel:
             idx1 = np.squeeze(np.argwhere(np.asarray(end_mask.cpu().numpy())))
@@ -270,9 +272,9 @@ for layer_id in range(len(old_modules)):
                 end_mask = nw_cfg_mask[layer_id_in_nw_cfg]  # mask for next iteration set
                 # after setting channel selection layer
                 # so basically 3 things need to be pruned
-            print(f"weight shape {m1.weight.data.shape}")
+            logger.info(f"weight shape {m1.weight.data.shape}")
             if m1.weight.data.shape != expected_shape:
-                print(f"^^^MISMATCHED SHAPE OF WEIGHTS exp {expected_shape} real {m1.weight.data.shape}")
+                logger.warn(f"^^^MISMATCHED SHAPE OF WEIGHTS exp {expected_shape} real {m1.weight.data.shape}")
         else:
             m1.weight.data = m0.weight.data.clone()  # setting weights from old model layer to new model layer
             m1.bias.data = m0.bias.data.clone()  # setting also bias and other params of BN layer
@@ -286,17 +288,18 @@ for layer_id in range(len(old_modules)):
             if hasattr(m1, param_name):
                 getattr(m1, param_name).data = param.data.clone()
             else:
-                print(f"{layer_id} - old layer:{str(m0)[:30]}\n new layer {str(m1)[:30]}\n new layer does not contain {param_name}")
+                logger.info(f"{layer_id} - old layer:{str(m0)[:30]}\n new layer {str(m1)[:30]}\n new layer does not contain {param_name}")
 
         # Copy buffers (like running_mean and running_var in BatchNorm)
         for buffer_name, buffer in m0.named_buffers():
             if hasattr(m1, buffer_name):
                 getattr(m1, buffer_name).data = buffer.data.clone()
             else:
-                print(f"{layer_id} - old layer {str(m0)[:30]}\n new layer {str(m1)[:30]}\n new layer does not contain {buffer_name}")
+                logger.info(f"{layer_id} - old layer {str(m0)[:30]}\n new layer {str(m1)[:30]}\n new layer does not contain {buffer_name}")
 
 # DONE you are saving nw_cfg in the model checkpoint - so you shall also use it from here
 # rather than setting it from the cfg file
+logger.info(f"saving pruned model to: {os.path.join(final_output_dir, args.output_file)}")
 torch.save({'nw_cfg': nw_cfg, 'state_dict': newmodel.state_dict()}, os.path.join(final_output_dir, args.output_file))
 
 """
